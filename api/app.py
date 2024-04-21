@@ -61,8 +61,7 @@ def draw_location_card(location_id: int):
 	conn = get_db_connection()
 	result = conn.execute("SELECT * FROM locationencounter le INNER JOIN neighbourhoodcard nc ON nc._id = le.cardid AND nc.discarded = 0 WHERE le.locationid = ? ORDER BY RANDOM() LIMIT 1", (location_id,)).fetchone()
 	if result is None:
-		result = conn.execute("SELECT neighbourhoodid FROM location WHERE _id = ?", (location_id,)).fetchone()
-		conn.execute("UPDATE neighbourhoodcard SET discarded = 0 WHERE neighbourhoodid = ?", (result["neighbourhoodid"],))
+		conn.execute("UPDATE neighbourhoodcard SET discarded = 0 WHERE neighbourhoodid = (SELECT neighbourhoodid FROM location WHERE _id = ?)", (location_id,))
 		result = conn.execute("SELECT * FROM locationencounter le INNER JOIN neighbourhoodcard nc ON nc._id = le.cardid AND nc.discarded = 0 WHERE le.locationid = ? ORDER BY RANDOM() LIMIT 1", (location_id,)).fetchone()
 	conn.execute("UPDATE neighbourhoodcard SET discarded = 1 WHERE _id = ?", (result["cardid"],))
 	conn.close()
