@@ -49,20 +49,20 @@ CREATE TABLE otherworld(
 	_id integer primary key,
 	title text,
 	sort_title text,
-	red integer,
-	green integer,
-	blue integer,
-	yellow integer,
+	red tinyint,
+	green tinyint,
+	blue tinyint,
+	yellow tinyint,
 	expansionid integer,
 	FOREIGN KEY(expansionid) REFERENCES expansion(_id)
 );
 
 CREATE TABLE otherworldcard(
 	_id integer primary key,
-	red integer,
-	green integer,
-	blue integer,
-	yellow integer,
+	red tinyint,
+	green tinyint,
+	blue tinyint,
+	yellow tinyint,
 	expansionid integer,
 	discarded tinyint default 0,
 	requiresexpansionid1 integer,
