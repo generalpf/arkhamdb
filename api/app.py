@@ -113,7 +113,6 @@ def draw_otherworld_card(otherworld_id: int):
                 break
         # discard all the discarded cards
         in_clause = ", ".join(str(id) for id in discarded_cards)
-        print(discarded_cards)
         conn.execute(f"UPDATE otherworldcard SET discarded = 1 WHERE _id IN ({in_clause})")
     result = conn.execute("SELECT owe.*, ow.title FROM otherworldencounter owe INNER JOIN otherworld ow ON ow._id = owe.otherworldid WHERE owe.otherworldcardid = ? ORDER BY otherworldid", (found_card_id,)).fetchall()
     conn.close()
