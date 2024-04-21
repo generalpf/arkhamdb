@@ -70,3 +70,57 @@ def draw_location_card(location_id: int):
 		response=j,
 		status=200,
 		mimetype="application/json")
+
+@app.route("/otherworld")
+def otherworld_index():
+	return table_as_response("otherworld")
+
+@app.route("/otherworld/<int:otherworld_id>")
+def otherworld_get(otherworld_id: int):
+	return row_as_response("otherworld", otherworld_id)
+
+@app.route("/otherworld/<int:otherworld_id>/draw", methods=["POST"])
+def draw_otherworld_card(otherworld_id: int):
+	conn = get_db_connection()
+	found_card_id = None
+	while found_card_id is None:
+		query = """ SELECT owc._id AS card_id, 
+					owc.red AS card_red, owc.green AS card_green, owc.blue AS card_blue, owc.yellow AS card_yellow,
+					ow.red AS world_red, ow.green AS world_green, ow.blue AS world_blue, ow.yellow AS world_yellow
+					FROM otherworldcard owc
+					JOIN otherworld ow ON ow._id = ?
+					WHERE owc.discarded = 0
+					ORDER BY random()
+					LIMIT 5"""
+		result = conn.execute(query, (otherworld_id,))
+		if result is None:
+			# shuffle
+			continue
+		discarded_cards = []
+		while True:
+			row = result.fetchone()
+			if row is None:
+				if not discarded_cards:
+					# shuffle the whole deck
+					conn.execute("UPDATE otherworldcard SET discarded = 0")
+				break
+			discarded_cards.append(row["card_id"])
+			if row["card_red"] + row["world_red"] == 2 or \
+					row["card_green"] + row["world_green"] == 2 or \
+					row["card_blue"] + row["world_blue"] == 2 or \
+					row["card_yellow"] + row["world_yellow"] == 2:
+				found_card_id = row["card_id"]
+				break
+		# discard all the discarded cards
+		in_clause = ", ".join(str(id) for id in discarded_cards)
+		print(discarded_cards)
+		conn.execute(f"UPDATE otherworldcard SET discarded = 1 WHERE _id IN ({in_clause})")
+	result = conn.execute("SELECT owe.*, ow.title FROM otherworldencounter owe INNER JOIN otherworld ow ON ow._id = owe.otherworldid WHERE owe.otherworldcardid = ? ORDER BY otherworldid", (found_card_id,)).fetchall()
+	conn.close()
+	for encounter in result:
+		if encounter["otherworldid"] == otherworld_id or encounter["title"] == "Other":
+			j = json.dumps(encounter)
+			return Response(
+				response=j,
+				status=200,
+				mimetype="application/json")
