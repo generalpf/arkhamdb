@@ -10,7 +10,7 @@ def get_db_connection():
     conn.row_factory = lambda c, r: dict([(col[0], r[idx]) for idx, col in enumerate(c.description)])
     return conn
 
-def table_as_response(table: str) -> str:
+def table_as_response(table: str):
     conn = get_db_connection()
     result = conn.execute(f"SELECT * FROM {table}").fetchall()
     conn.close()
@@ -20,7 +20,7 @@ def table_as_response(table: str) -> str:
         status=200,
         mimetype="application/json")
 
-def row_as_response(table: str, id: int) -> str:
+def row_as_response(table: str, id: int):
     conn = get_db_connection()
     result = conn.execute(f"SELECT * FROM {table} WHERE _id = ?", (id,)).fetchone()
     conn.close()
@@ -124,18 +124,29 @@ def draw_otherworld_card(otherworld_id: int):
                 status=200,
                 mimetype="application/json")
 
-@app.route("/reckoning/draw", methods=["POST"])
-def draw_reckoning_card():
+def draw_standard_discardable(table: str):
     conn = get_db_connection()
-    query = "SELECT * FROM reckoningcard WHERE discarded = 0 ORDER BY RANDOM() LIMIT 1"
+    query = f"SELECT * FROM {table} WHERE discarded = 0 ORDER BY RANDOM() LIMIT 1"
     result = conn.execute(query).fetchone()
     if result is None:
-        conn.execute("UPDATE reckoningcard SET discarded = 0")
+        conn.execute(f"UPDATE {table} SET discarded = 0")
         result = conn.execute(query).fetchone()
-    conn.execute("UPDATE reckoningcard SET discarded = 1 WHERE _id = ?", (result["_id"],))
+    conn.execute(f"UPDATE {table} SET discarded = 1 WHERE _id = ?", (result["_id"],))
     conn.close()
     j = json.dumps(result)
     return Response(
         response=j,
         status=200,
         mimetype="application/json")
+
+@app.route("/reckoning/draw", methods=["POST"])
+def draw_reckoning_card():
+    return draw_standard_discardable("reckoningcard")
+
+@app.route("/exhibitencounter/draw", methods=["POST"])
+def draw_exhibitencounter_card():
+    return draw_standard_discardable("exhibitencountercard")
+
+@app.route("/cultencounter/draw", methods=["POST"])
+def draw_cultencounter_card():
+    return draw_standard_discardable("cultencountercard")
