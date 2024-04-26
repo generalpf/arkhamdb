@@ -123,3 +123,19 @@ def draw_otherworld_card(otherworld_id: int):
                 response=j,
                 status=200,
                 mimetype="application/json")
+
+@app.route("/reckoning/draw", methods=["POST"])
+def draw_reckoning_card():
+    conn = get_db_connection()
+    query = "SELECT * FROM reckoningcard WHERE discarded = 0 ORDER BY RANDOM() LIMIT 1"
+    result = conn.execute(query).fetchone()
+    if result is None:
+        conn.execute("UPDATE reckoningcard SET discarded = 0")
+        result = conn.execute(query).fetchone()
+    conn.execute("UPDATE reckoningcard SET discarded = 1 WHERE _id = ?", (result["_id"],))
+    conn.close()
+    j = json.dumps(result)
+    return Response(
+        response=j,
+        status=200,
+        mimetype="application/json")
