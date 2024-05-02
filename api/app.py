@@ -6,21 +6,27 @@ import uuid
 
 app = Flask(__name__)
 
+
 def get_db_connection():
     conn = sqlite3.connect("../arkhamdb.sqlite3", autocommit=True)
     # to get dictionaries out of the result
-    conn.row_factory = lambda c, r: dict([(col[0], r[idx]) for idx, col in enumerate(c.description)])
+    conn.row_factory = lambda c, r: dict(
+        [(col[0], r[idx]) for idx, col in enumerate(c.description)])
     return conn
 
+
 def get_session_id() -> int:
-    if not "sessionid" in request.headers:
+    if "sessionid" not in request.headers:
         raise HttpException(400, "sessionid is required")
     conn = get_db_connection()
-    result = conn.execute("SELECT _id FROM session WHERE sessionid = ?", (request.headers["sessionid"],)).fetchone()
+    result = conn.execute(
+        "SELECT _id FROM session WHERE sessionid = ?",
+        (request.headers["sessionid"],)).fetchone()
     conn.close()
     if result is None:
         raise HttpException(401, "sessionid is invalid")
     return result["_id"]
+
 
 def table_as_response(table: str):
     conn = get_db_connection()
@@ -32,9 +38,12 @@ def table_as_response(table: str):
         status=200,
         mimetype="application/json")
 
+
 def row_as_response(table: str, id: int):
     conn = get_db_connection()
-    result = conn.execute(f"SELECT * FROM {table} WHERE _id = ?", (id,)).fetchone()
+    result = conn.execute(
+        f"SELECT * FROM {table} WHERE _id = ?",
+        (id,)).fetchone()
     conn.close()
     if result is None:
         return Response(status=404)
@@ -44,29 +53,36 @@ def row_as_response(table: str, id: int):
         status=200,
         mimetype="application/json")
 
+
 @app.route("/expansion")
 def expansion_index():
     return table_as_response("expansion")
+
 
 @app.route("/expansion/<int:expansion_id>")
 def expansion_get(expansion_id: int):
     return row_as_response("expansion", expansion_id)
 
+
 @app.route("/board")
 def board_index():
     return table_as_response("board")
+
 
 @app.route("/board/<int:board_id>")
 def board_get(board_id: int):
     return row_as_response("board", board_id)
 
+
 @app.route("/location")
 def location_index():
     return table_as_response("location")
 
+
 @app.route("/location/<int:location_id>")
 def location_get(location_id: int):
     return row_as_response("location", location_id)
+
 
 @app.route("/location/<int:location_id>/draw", methods=["POST"])
 def draw_location_card(location_id: int):
@@ -85,11 +101,11 @@ def draw_location_card(location_id: int):
                     AND snc.sessionid = ?
                 WHERE le.locationid = ?
                     AND snc.neighbourhoodcardid IS NULL
-                ORDER BY RANDOM() 
+                ORDER BY RANDOM()
                 LIMIT 1"""
     result = conn.execute(query, (sessionid, location_id,)).fetchone()
     if result is None:
-        conn.execute("""DELETE FROM session_neighbourhoodcard 
+        conn.execute("""DELETE FROM session_neighbourhoodcard
                         WHERE sessionid = ?
                             AND discarded = 1
                             AND neighbourhoodcardid IN (
@@ -109,13 +125,16 @@ def draw_location_card(location_id: int):
         status=200,
         mimetype="application/json")
 
+
 @app.route("/otherworld")
 def otherworld_index():
     return table_as_response("otherworld")
 
+
 @app.route("/otherworld/<int:otherworld_id>")
 def otherworld_get(otherworld_id: int):
     return row_as_response("otherworld", otherworld_id)
+
 
 @app.route("/otherworld/<int:otherworld_id>/draw", methods=["POST"])
 def draw_otherworld_card(otherworld_id: int):
@@ -162,6 +181,7 @@ def draw_otherworld_card(otherworld_id: int):
         # discard all the discarded cards
         args = [(sessionid, id, 1,) for id in discarded_cards]
         conn.executemany("INSERT INTO session_otherworldcard(sessionid, otherworldcardid, discarded) VALUES(?, ?, ?)", args)
+
     result = conn.execute("""   SELECT owe.*, ow.title
                                 FROM otherworldencounter owe
                                 INNER JOIN otherworld ow ON ow._id = owe.otherworldid
@@ -175,6 +195,7 @@ def draw_otherworld_card(otherworld_id: int):
                 response=j,
                 status=200,
                 mimetype="application/json")
+
 
 def draw_standard_discardable(table: str):
     try:
@@ -196,7 +217,9 @@ def draw_standard_discardable(table: str):
     if result is None:
         conn.execute(f"DELETE FROM session_{table} WHERE discarded = 1 AND sessionid = ?", (sessionid,))
         result = conn.execute(query, (sessionid,)).fetchone()
-    conn.execute(f"INSERT INTO session_{table}({table}id, sessionid, discarded) VALUES(?, ?, ?)", (result["_id"], sessionid, 1,))
+    conn.execute(
+        f"INSERT INTO session_{table}({table}id, sessionid, discarded) VALUES(?, ?, ?)",
+        (result["_id"], sessionid, 1,))
     conn.close()
     j = json.dumps(result)
     return Response(
@@ -204,35 +227,39 @@ def draw_standard_discardable(table: str):
         status=200,
         mimetype="application/json")
 
+
 @app.route("/reckoning/draw", methods=["POST"])
 def draw_reckoning_card():
     return draw_standard_discardable("reckoningcard")
+
 
 @app.route("/exhibitencounter/draw", methods=["POST"])
 def draw_exhibitencounter_card():
     return draw_standard_discardable("exhibitencountercard")
 
+
 @app.route("/cultencounter/draw", methods=["POST"])
 def draw_cultencounter_card():
     return draw_standard_discardable("cultencountercard")
+
 
 @app.route("/session/create", methods=["POST"])
 def session_create():
     sessionid = str(uuid.uuid4())
     sourceip = request.remote_addr
-    if not "title" in request.form:
+    if "title" not in request.form:
         return Response(
             response="title is required",
             status=400,
             mimetype="application/json")
     title = request.form["title"]
-    
+
     conn = get_db_connection()
     conn.execute(
         "INSERT INTO session(sessionid, sourceip, title, created) VALUES(?, ?, ?, ?)",
         (sessionid, sourceip, title, datetime.now(timezone.utc)))
     conn.close()
-    j = json.dumps({"sessionid": sessionid})  
+    j = json.dumps({"sessionid": sessionid})
     return Response(
         response=j,
         status=201,
