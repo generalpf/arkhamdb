@@ -1,6 +1,8 @@
-import sqlite3
+from datetime import datetime, timezone
+from flask import Flask, Response, request
 import json
-from flask import Flask, Response
+import sqlite3
+import uuid
 
 app = Flask(__name__)
 
@@ -9,6 +11,16 @@ def get_db_connection():
     # to get dictionaries out of the result
     conn.row_factory = lambda c, r: dict([(col[0], r[idx]) for idx, col in enumerate(c.description)])
     return conn
+
+def get_session_id() -> int:
+    if not "sessionid" in request.headers:
+        raise HttpException(400, "sessionid is required")
+    conn = get_db_connection()
+    result = conn.execute("SELECT _id FROM session WHERE sessionid = ?", (request.headers["sessionid"],)).fetchone()
+    conn.close()
+    if result is None:
+        raise HttpException(401, "sessionid is invalid")
+    return result["_id"]
 
 def table_as_response(table: str):
     conn = get_db_connection()
@@ -58,12 +70,38 @@ def location_get(location_id: int):
 
 @app.route("/location/<int:location_id>/draw", methods=["POST"])
 def draw_location_card(location_id: int):
+    try:
+        sessionid = get_session_id()
+    except HttpException as e:
+        return Response(
+            response=e.message,
+            status=e.status_code)
+
     conn = get_db_connection()
-    result = conn.execute("SELECT * FROM locationencounter le INNER JOIN neighbourhoodcard nc ON nc._id = le.cardid AND nc.discarded = 0 WHERE le.locationid = ? ORDER BY RANDOM() LIMIT 1", (location_id,)).fetchone()
+    query = """ SELECT le.* FROM locationencounter le
+                INNER JOIN neighbourhoodcard nc ON nc._id = le.cardid
+                LEFT OUTER JOIN session_neighbourhoodcard snc ON snc.neighbourhoodcardid = nc._id
+                    AND snc.discarded = 1
+                    AND snc.sessionid = ?
+                WHERE le.locationid = ?
+                    AND snc.neighbourhoodcardid IS NULL
+                ORDER BY RANDOM() 
+                LIMIT 1"""
+    result = conn.execute(query, (sessionid, location_id,)).fetchone()
     if result is None:
-        conn.execute("UPDATE neighbourhoodcard SET discarded = 0 WHERE neighbourhoodid = (SELECT neighbourhoodid FROM location WHERE _id = ?)", (location_id,))
-        result = conn.execute("SELECT * FROM locationencounter le INNER JOIN neighbourhoodcard nc ON nc._id = le.cardid AND nc.discarded = 0 WHERE le.locationid = ? ORDER BY RANDOM() LIMIT 1", (location_id,)).fetchone()
-    conn.execute("UPDATE neighbourhoodcard SET discarded = 1 WHERE _id = ?", (result["cardid"],))
+        conn.execute("""DELETE FROM session_neighbourhoodcard 
+                        WHERE sessionid = ?
+                            AND discarded = 1
+                            AND neighbourhoodcardid IN (
+                                SELECT nc._id FROM neighbourhoodcard nc
+                                INNER JOIN neighbourhood n ON n._id = nc.neighbourhoodid
+                                INNER JOIN location l ON l.neighbourhoodid = n._id
+                                    AND l._id = ?
+                            )""", (sessionid, location_id,))
+        result = conn.execute(query, (sessionid, location_id,)).fetchone()
+    conn.execute(
+        "INSERT INTO session_neighbourhoodcard(neighbourhoodcardid, sessionid, discarded) VALUES(?, ?, ?)",
+        (result["cardid"], sessionid, 1,))
     conn.close()
     j = json.dumps(result)
     return Response(
@@ -81,6 +119,13 @@ def otherworld_get(otherworld_id: int):
 
 @app.route("/otherworld/<int:otherworld_id>/draw", methods=["POST"])
 def draw_otherworld_card(otherworld_id: int):
+    try:
+        sessionid = get_session_id()
+    except HttpException as e:
+        return Response(
+            response=e.message,
+            status=e.status_code)
+
     conn = get_db_connection()
     found_card_id = None
     while found_card_id is None:
@@ -88,11 +133,14 @@ def draw_otherworld_card(otherworld_id: int):
                     owc.red AS card_red, owc.green AS card_green, owc.blue AS card_blue, owc.yellow AS card_yellow,
                     ow.red AS world_red, ow.green AS world_green, ow.blue AS world_blue, ow.yellow AS world_yellow
                     FROM otherworldcard owc
+                    LEFT OUTER JOIN session_otherworldcard sowc ON sowc.otherworldcardid = owc._id
+                        AND sowc.discarded = 1
+                        AND sowc.sessionid = ?
                     JOIN otherworld ow ON ow._id = ?
-                    WHERE owc.discarded = 0
-                    ORDER BY random()
+                    WHERE sowc.otherworldcardid IS NULL
+                    ORDER BY RANDOM()
                     LIMIT 5"""
-        result = conn.execute(query, (otherworld_id,))
+        result = conn.execute(query, (sessionid, otherworld_id,))
         if result is None:
             # shuffle
             continue
@@ -102,7 +150,7 @@ def draw_otherworld_card(otherworld_id: int):
             if row is None:
                 if not discarded_cards:
                     # shuffle the whole deck
-                    conn.execute("UPDATE otherworldcard SET discarded = 0")
+                    conn.execute("DELETE FROM session_otherworldcard WHERE discarded = 1 AND sessionid = ?", (sessionid,))
                 break
             discarded_cards.append(row["card_id"])
             if row["card_red"] + row["world_red"] == 2 or \
@@ -112,9 +160,13 @@ def draw_otherworld_card(otherworld_id: int):
                 found_card_id = row["card_id"]
                 break
         # discard all the discarded cards
-        in_clause = ", ".join(str(id) for id in discarded_cards)
-        conn.execute(f"UPDATE otherworldcard SET discarded = 1 WHERE _id IN ({in_clause})")
-    result = conn.execute("SELECT owe.*, ow.title FROM otherworldencounter owe INNER JOIN otherworld ow ON ow._id = owe.otherworldid WHERE owe.otherworldcardid = ? ORDER BY otherworldid", (found_card_id,)).fetchall()
+        args = [(sessionid, id, 1,) for id in discarded_cards]
+        conn.executemany("INSERT INTO session_otherworldcard(sessionid, otherworldcardid, discarded) VALUES(?, ?, ?)", args)
+    result = conn.execute("""   SELECT owe.*, ow.title
+                                FROM otherworldencounter owe
+                                INNER JOIN otherworld ow ON ow._id = owe.otherworldid
+                                WHERE owe.otherworldcardid = ?
+                                ORDER BY otherworldid""", (found_card_id,)).fetchall()
     conn.close()
     for encounter in result:
         if encounter["otherworldid"] == otherworld_id or encounter["title"] == "Other":
@@ -125,13 +177,26 @@ def draw_otherworld_card(otherworld_id: int):
                 mimetype="application/json")
 
 def draw_standard_discardable(table: str):
+    try:
+        sessionid = get_session_id()
+    except HttpException as e:
+        return Response(
+            response=e.message,
+            status=e.status_code)
+
     conn = get_db_connection()
-    query = f"SELECT * FROM {table} WHERE discarded = 0 ORDER BY RANDOM() LIMIT 1"
-    result = conn.execute(query).fetchone()
+    query = f"""SELECT t.* FROM {table} t
+                LEFT OUTER JOIN session_{table} st ON st.{table}id = t._id
+                    AND st.discarded = 1
+                    AND st.sessionid = ?
+                WHERE st.{table}id IS NULL
+                ORDER BY RANDOM()
+                LIMIT 1"""
+    result = conn.execute(query, (sessionid,)).fetchone()
     if result is None:
-        conn.execute(f"UPDATE {table} SET discarded = 0")
-        result = conn.execute(query).fetchone()
-    conn.execute(f"UPDATE {table} SET discarded = 1 WHERE _id = ?", (result["_id"],))
+        conn.execute(f"DELETE FROM session_{table} WHERE discarded = 1 AND sessionid = ?", (sessionid,))
+        result = conn.execute(query, (sessionid,)).fetchone()
+    conn.execute(f"INSERT INTO session_{table}({table}id, sessionid, discarded) VALUES(?, ?, ?)", (result["_id"], sessionid, 1,))
     conn.close()
     j = json.dumps(result)
     return Response(
@@ -150,3 +215,32 @@ def draw_exhibitencounter_card():
 @app.route("/cultencounter/draw", methods=["POST"])
 def draw_cultencounter_card():
     return draw_standard_discardable("cultencountercard")
+
+@app.route("/session/create", methods=["POST"])
+def session_create():
+    sessionid = str(uuid.uuid4())
+    sourceip = request.remote_addr
+    if not "title" in request.form:
+        return Response(
+            response="title is required",
+            status=400,
+            mimetype="application/json")
+    title = request.form["title"]
+    
+    conn = get_db_connection()
+    conn.execute(
+        "INSERT INTO session(sessionid, sourceip, title, created) VALUES(?, ?, ?, ?)",
+        (sessionid, sourceip, title, datetime.now(timezone.utc)))
+    conn.close()
+    j = json.dumps({"sessionid": sessionid})  
+    return Response(
+        response=j,
+        status=201,
+        mimetype="application/json")
+
+
+class HttpException(Exception):
+    def __init__(self, status_code: int, message: str):
+        super().__init__(message)
+        self.message = message
+        self.status_code = status_code
