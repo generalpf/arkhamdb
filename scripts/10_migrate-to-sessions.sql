@@ -10,23 +10,25 @@ CREATE TABLE session_neighbourhoodcard(
     neighbourhoodcardid integer,
     sessionid integer,
     discarded tinyint DEFAULT 0,
-    pinned tinyint DEFAULT 0,
     FOREIGN KEY(neighbourhoodcardid) REFERENCES neighbourhoodcard(_id),
     FOREIGN KEY(sessionid) REFERENCES session(_id)
 );
 
 ALTER TABLE neighbourhoodcard DROP COLUMN discarded;
 
+ALTER TABLE locationencounter DROP COLUMN pinned;
+
 CREATE TABLE session_otherworldcard(
     otherworldcardid integer,
     sessionid integer,
     discarded tinyint DEFAULT 0,
-    pinned tinyint DEFAULT 0,
     FOREIGN KEY(otherworldcardid) REFERENCES otherworldcard(_id),
     FOREIGN KEY(sessionid) REFERENCES session(_id)
 );
 
 ALTER TABLE otherworldcard DROP COLUMN discarded;
+
+ALTER TABLE otherworldencounter DROP COLUMN pinned;
 
 CREATE TABLE session_cultencountercard(
     cultencountercardid integer,
