@@ -9,6 +9,7 @@ app = Flask(__name__)
 
 def get_db_connection():
     conn = sqlite3.connect("../arkhamdb.sqlite3", autocommit=True)
+    conn.execute("PRAGMA foreign_keys=1")
     # to get dictionaries out of the result
     conn.row_factory = lambda c, r: dict(
         [(col[0], r[idx]) for idx, col in enumerate(c.description)])
@@ -96,6 +97,8 @@ def draw_location_card(location_id: int):
     conn = get_db_connection()
     query = """ SELECT le.* FROM locationencounter le
                 INNER JOIN neighbourhoodcard nc ON nc._id = le.cardid
+                INNER JOIN session_expansion se ON se.expansionid = nc.expansionid
+                    AND se.sessionid = ?
                 LEFT OUTER JOIN session_neighbourhoodcard snc ON snc.neighbourhoodcardid = nc._id
                     AND snc.discarded = 1
                     AND snc.sessionid = ?
@@ -103,7 +106,7 @@ def draw_location_card(location_id: int):
                     AND snc.neighbourhoodcardid IS NULL
                 ORDER BY RANDOM()
                 LIMIT 1"""
-    result = conn.execute(query, (sessionid, location_id,)).fetchone()
+    result = conn.execute(query, (sessionid, sessionid, location_id,)).fetchone()
     if result is None:
         conn.execute("""DELETE FROM session_neighbourhoodcard
                         WHERE sessionid = ?
@@ -114,7 +117,9 @@ def draw_location_card(location_id: int):
                                 INNER JOIN location l ON l.neighbourhoodid = n._id
                                     AND l._id = ?
                             )""", (sessionid, location_id,))
-        result = conn.execute(query, (sessionid, location_id,)).fetchone()
+        result = conn.execute(query, (sessionid, sessionid, location_id,)).fetchone()
+        if result is None:
+            return Response(status=404)
     conn.execute(
         "INSERT INTO session_neighbourhoodcard(neighbourhoodcardid, sessionid, discarded) VALUES(?, ?, ?)",
         (result["cardid"], sessionid, 1,))
@@ -149,9 +154,11 @@ def draw_otherworld_card(otherworld_id: int):
     found_card_id = None
     while found_card_id is None:
         query = """ SELECT owc._id AS card_id,
-                    owc.red AS card_red, owc.green AS card_green, owc.blue AS card_blue, owc.yellow AS card_yellow,
-                    ow.red AS world_red, ow.green AS world_green, ow.blue AS world_blue, ow.yellow AS world_yellow
+                        owc.red AS card_red, owc.green AS card_green, owc.blue AS card_blue, owc.yellow AS card_yellow,
+                        ow.red AS world_red, ow.green AS world_green, ow.blue AS world_blue, ow.yellow AS world_yellow
                     FROM otherworldcard owc
+                    INNER JOIN session_expansion se ON se.expansionid = owc.expansionid
+                        AND se.sessionid = ?
                     LEFT OUTER JOIN session_otherworldcard sowc ON sowc.otherworldcardid = owc._id
                         AND sowc.discarded = 1
                         AND sowc.sessionid = ?
@@ -159,7 +166,7 @@ def draw_otherworld_card(otherworld_id: int):
                     WHERE sowc.otherworldcardid IS NULL
                     ORDER BY RANDOM()
                     LIMIT 5"""
-        result = conn.execute(query, (sessionid, otherworld_id,))
+        result = conn.execute(query, (sessionid, sessionid, otherworld_id,))
         if result is None:
             # shuffle
             continue
@@ -207,16 +214,20 @@ def draw_standard_discardable(table: str):
 
     conn = get_db_connection()
     query = f"""SELECT t.* FROM {table} t
+                INNER JOIN session_expansion se ON se.expansionid = t.expansionid
+                    AND se.sessionid = ?
                 LEFT OUTER JOIN session_{table} st ON st.{table}id = t._id
                     AND st.discarded = 1
                     AND st.sessionid = ?
                 WHERE st.{table}id IS NULL
                 ORDER BY RANDOM()
                 LIMIT 1"""
-    result = conn.execute(query, (sessionid,)).fetchone()
+    result = conn.execute(query, (sessionid, sessionid,)).fetchone()
     if result is None:
         conn.execute(f"DELETE FROM session_{table} WHERE discarded = 1 AND sessionid = ?", (sessionid,))
-        result = conn.execute(query, (sessionid,)).fetchone()
+        result = conn.execute(query, (sessionid, sessionid,)).fetchone()
+    if result is None:
+        return Response(status=404)
     conn.execute(
         f"INSERT INTO session_{table}({table}id, sessionid, discarded) VALUES(?, ?, ?)",
         (result["_id"], sessionid, 1,))
@@ -252,12 +263,22 @@ def session_create():
             response="title is required",
             status=400,
             mimetype="application/json")
+    if "expansions" not in request.form:
+        return Response(
+            response="expansions is required",
+            status=400,
+            mimetype="application/json")
     title = request.form["title"]
+    expansions = request.form.getlist("expansions")
 
     conn = get_db_connection()
-    conn.execute(
+    cursor = conn.cursor()
+    cursor.execute(
         "INSERT INTO session(sessionid, sourceip, title, created) VALUES(?, ?, ?, ?)",
         (sessionid, sourceip, title, datetime.now(timezone.utc)))
+    _id = cursor.lastrowid
+    args = [(_id, id,) for id in expansions]
+    conn.executemany("INSERT INTO session_expansion(sessionid, expansionid) VALUES(?, ?)", args)
     conn.close()
     j = json.dumps({"sessionid": sessionid})
     return Response(

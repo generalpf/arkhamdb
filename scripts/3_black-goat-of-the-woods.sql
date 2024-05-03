@@ -1,3 +1,5 @@
+PRAGMA foreign_keys=1;
+
 INSERT INTO "expansion" VALUES(3,'The Black Goat of the Woods',1);
 
 INSERT INTO "neighbourhoodcard"(_id, neighbourhoodid, expansionid) VALUES(214,7,3);

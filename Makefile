@@ -1,4 +1,4 @@
-rebuild:
+db:
 	rm -f arkhamdb.sqlite3
 	sqlite3 arkhamdb.sqlite3 < scripts/0_ddl.sql
 	sqlite3 arkhamdb.sqlite3 < scripts/1_base.sql
@@ -10,3 +10,5 @@ rebuild:
 	sqlite3 arkhamdb.sqlite3 < scripts/7_curse-of-the-dark-pharaoh.sql
 	sqlite3 arkhamdb.sqlite3 < scripts/8_king-in-yellow.sql
 	sqlite3 arkhamdb.sqlite3 < scripts/9_miskatonic-horror.sql
+	sqlite3 arkhamdb.sqlite3 < scripts/10_migrate-to-sessions.sql
+	sqlite3 arkhamdb.sqlite3 < scripts/11_expansions.sql

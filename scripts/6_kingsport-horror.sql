@@ -1,3 +1,5 @@
+PRAGMA foreign_keys=1;
+
 INSERT INTO "expansion" VALUES(6,'Kingsport Horror',1);
 
 INSERT INTO "board"(_id, title, expansionid) VALUES(4,'Kingsport',6);
