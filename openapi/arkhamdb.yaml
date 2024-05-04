@@ -1,0 +1,65 @@
+openapi: 3.0.3
+info:
+  title: ArkhamDB
+  description: |
+    This API contains information for cards from Arkham Horror, 2nd Edition.
+  version: 1.0.0
+servers:
+- url: https://arkhamdb.walberg.ca
+paths:
+  /session/create:
+    post:
+      operationId: session.create
+      summary: Create a session
+      description: Creates a session so the server can preserve the deck states.
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: './components.yaml#/components/requestBodies/sessionCreateRequest'
+      responses:
+        201:
+          description: A session was created.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sessionid:
+                    type: string
+                    description: A UUID representing the new session id.
+  /board:
+    get:
+      operationId: board.list
+      summary: Get a list of boards
+      description: Gets a list of all boards from all expansions.
+      responses:
+        200:
+          description: All good.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: './components.yaml#/components/schemas/board'
+  /board/{id}:
+    get:
+      operationId: board.get
+      summary: Get an individual board
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+      responses:
+        200:
+          description: All good.
+          content:
+            application/json:
+              schema:
+                $ref: './components.yaml#/components/schemas/board'
+        404:
+          description: The board identified by the id does not exist.

@@ -1,0 +1,24 @@
+components:
+  schemas:
+    board:
+      type: object
+      properties:
+        _id:
+          type: integer
+          description: The id of the board.
+        title:
+          type: string
+          description: The name of the board.
+        expansionid:
+          type: integer
+          description: The id of the expansion that introduced the board.
+  requestBodies:
+    sessionCreateRequest:
+      type: object
+      properties:
+        title:
+          type: string
+        expansions:
+          type: array
+          items:
+            type: integer

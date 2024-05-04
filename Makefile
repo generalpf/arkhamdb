@@ -1,3 +1,7 @@
+clean:
+	rm arkhamdb.sqlite3
+	rm -rf openapi/index.html
+
 db:
 	rm -f arkhamdb.sqlite3
 	sqlite3 arkhamdb.sqlite3 < scripts/0_ddl.sql
@@ -12,3 +16,8 @@ db:
 	sqlite3 arkhamdb.sqlite3 < scripts/9_miskatonic-horror.sql
 	sqlite3 arkhamdb.sqlite3 < scripts/10_migrate-to-sessions.sql
 	sqlite3 arkhamdb.sqlite3 < scripts/11_expansions.sql
+
+openapi: openapi/index.html
+
+openapi/index.html: openapi/*.yaml
+	cd openapi; openapi-generator generate -g html2 -i arkhamdb.yaml --global-property skipFormModel=false

@@ -161,4 +161,7 @@ cython_debug/
 
 # Byproducts
 arkhamdb.sqlite3
+openapi/.openapi-generator-ignore
+openapi/.openapi-generator/
+openapi/index.html
 
