@@ -258,18 +258,19 @@ def draw_cultencounter_card():
 def session_create():
     sessionid = str(uuid.uuid4())
     sourceip = request.remote_addr
-    if "title" not in request.form:
+    request_json = request.json
+    if "title" not in request_json:
         return Response(
             response="title is required",
             status=400,
             mimetype="application/json")
-    if "expansions" not in request.form:
+    if "expansions" not in request_json:
         return Response(
             response="expansions is required",
             status=400,
             mimetype="application/json")
-    title = request.form["title"]
-    expansions = request.form.getlist("expansions")
+    title = request_json["title"]
+    expansions = request_json["expansions"]
 
     conn = get_db_connection()
     cursor = conn.cursor()
