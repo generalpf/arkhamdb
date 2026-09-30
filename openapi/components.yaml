@@ -1,5 +1,82 @@
 components:
+  securitySchemes:
+    sessionId:
+      type: apiKey
+      in: header
+      name: sessionid
+      description: The session id returned by `POST /session/create`.
+  parameters:
+    id:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+  requestBodies:
+    sessionCreateRequest:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/sessionCreateRequest'
+  responses:
+    notFound:
+      description: The resource identified by the id does not exist.
+    badRequest:
+      description: The request body is not a JSON object, is missing a required value, or refers to an expansion that does not exist or more than once.
+      content:
+        text/plain:
+          schema:
+            type: string
+    sessionMissing:
+      description: The `sessionid` header was not supplied.
+      content:
+        text/plain:
+          schema:
+            type: string
+            example: sessionid is required
+    sessionInvalid:
+      description: The `sessionid` header does not identify an existing session.
+      content:
+        text/plain:
+          schema:
+            type: string
+            example: sessionid is invalid
+    deckEmpty:
+      description: There are no cards available to draw for the session's expansions, even after shuffling the discard pile.
   schemas:
+    sessionCreateRequest:
+      type: object
+      required:
+      - title
+      - expansions
+      properties:
+        title:
+          type: string
+          description: A name for the session.
+        expansions:
+          type: array
+          description: The ids of the expansions in play for this session.
+          uniqueItems: true
+          items:
+            type: integer
+    sessionCreateResponse:
+      type: object
+      properties:
+        sessionid:
+          type: string
+          format: uuid
+          description: A UUID representing the new session id.
+    expansion:
+      type: object
+      properties:
+        _id:
+          type: integer
+          description: The id of the expansion.
+        title:
+          type: string
+          description: The name of the expansion.
     board:
       type: object
       properties:
@@ -12,13 +89,130 @@ components:
         expansionid:
           type: integer
           description: The id of the expansion that introduced the board.
-  requestBodies:
-    sessionCreateRequest:
+    location:
       type: object
       properties:
+        _id:
+          type: integer
+          description: The id of the location.
+        neighbourhoodid:
+          type: integer
+          description: The id of the neighbourhood containing the location.
         title:
           type: string
-        expansions:
-          type: array
-          items:
-            type: integer
+          description: The name of the location.
+        sort_title:
+          type: string
+          description: The name of the location, used for sorting.
+    locationEncounter:
+      type: object
+      properties:
+        _id:
+          type: integer
+          description: The id of the encounter.
+        locationid:
+          type: integer
+          description: The id of the location the encounter takes place at.
+        cardid:
+          type: integer
+          description: The id of the neighbourhood card the encounter is printed on.
+        description:
+          type: string
+          description: The text of the encounter.
+    otherworld:
+      type: object
+      properties:
+        _id:
+          type: integer
+          description: The id of the other world.
+        title:
+          type: string
+          description: The name of the other world.
+        sort_title:
+          type: string
+          description: The name of the other world, used for sorting.
+        red:
+          type: integer
+          enum: [0, 1]
+          description: 1 if the other world is red.
+        green:
+          type: integer
+          enum: [0, 1]
+          description: 1 if the other world is green.
+        blue:
+          type: integer
+          enum: [0, 1]
+          description: 1 if the other world is blue.
+        yellow:
+          type: integer
+          enum: [0, 1]
+          description: 1 if the other world is yellow.
+        expansionid:
+          type: integer
+          description: The id of the expansion that introduced the other world.
+    otherworldEncounter:
+      type: object
+      properties:
+        otherworldcardid:
+          type: integer
+          description: The id of the other world card the encounter is printed on.
+        otherworldid:
+          type: integer
+          description: The id of the other world the encounter takes place in.
+        title:
+          type: string
+          description: The name of the other world the encounter takes place in, or `Other` for the card's catch-all encounter.
+        description:
+          type: string
+          description: The text of the encounter.
+    cultEncounterCard:
+      type: object
+      properties:
+        _id:
+          type: integer
+          description: The id of the card.
+        expansionid:
+          type: integer
+          description: The id of the expansion that introduced the card.
+        title:
+          type: string
+          description: The title of the card.
+        flavourtext:
+          type: string
+          description: The flavour text of the card.
+        description:
+          type: string
+          description: The text of the encounter.
+    exhibitEncounterCard:
+      type: object
+      properties:
+        _id:
+          type: integer
+          description: The id of the card.
+        expansionid:
+          type: integer
+          description: The id of the expansion that introduced the card.
+        title:
+          type: string
+          description: The title of the card.
+        description:
+          type: string
+          description: The text of the encounter.
+        moves:
+          type: string
+          description: Where the exhibit moves to after the encounter.
+    reckoningCard:
+      type: object
+      properties:
+        _id:
+          type: integer
+          description: The id of the card.
+        expansionid:
+          type: integer
+          description: The id of the expansion that introduced the card.
+        title:
+          type: string
+          description: The title of the card.
+        description:
+          type: string
+          description: The text of the card.

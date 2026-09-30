@@ -151,6 +151,38 @@ def draw_otherworld_card(otherworld_id: int):
             status=e.status_code)
 
     conn = get_db_connection()
+    world = conn.execute(
+        "SELECT red, green, blue, yellow FROM otherworld WHERE _id = ?",
+        (otherworld_id,)).fetchone()
+    if world is None:
+        conn.close()
+        return Response(
+            response="otherworld not found",
+            status=404,
+            mimetype="text/plain")
+    if not any(world.values()):
+        conn.close()
+        return Response(
+            response="otherworld has no colours, so no encounter can be drawn for it",
+            status=400,
+            mimetype="text/plain")
+    # without a matching card in the session's deck, the draw loop below would never end
+    match = conn.execute("""SELECT 1 FROM otherworldcard owc
+                            INNER JOIN session_expansion se ON se.expansionid = owc.expansionid
+                                AND se.sessionid = ?
+                            WHERE (owc.red = 1 AND ? = 1)
+                                OR (owc.green = 1 AND ? = 1)
+                                OR (owc.blue = 1 AND ? = 1)
+                                OR (owc.yellow = 1 AND ? = 1)
+                            LIMIT 1""",
+                         (sessionid, world["red"], world["green"], world["blue"], world["yellow"],)).fetchone()
+    if match is None:
+        conn.close()
+        return Response(
+            response="no otherworld cards in this session's expansions match the otherworld's colours",
+            status=404,
+            mimetype="text/plain")
+
     found_card_id = None
     while found_card_id is None:
         query = """ SELECT owc._id AS card_id,
@@ -167,9 +199,6 @@ def draw_otherworld_card(otherworld_id: int):
                     ORDER BY RANDOM()
                     LIMIT 5"""
         result = conn.execute(query, (sessionid, sessionid, otherworld_id,))
-        if result is None:
-            # shuffle
-            continue
         discarded_cards = []
         while True:
             row = result.fetchone()
@@ -202,6 +231,11 @@ def draw_otherworld_card(otherworld_id: int):
                 response=j,
                 status=200,
                 mimetype="application/json")
+    # every card should have an encounter for "Other", so this is bad data rather than a bad request
+    return Response(
+        response=f"otherworld card {found_card_id} has no encounter for this otherworld or for Other",
+        status=500,
+        mimetype="text/plain")
 
 
 def draw_standard_discardable(table: str):
@@ -258,21 +292,48 @@ def draw_cultencounter_card():
 def session_create():
     sessionid = str(uuid.uuid4())
     sourceip = request.remote_addr
-    request_json = request.json
+    request_json = request.get_json(silent=True)
+    if not isinstance(request_json, dict):
+        return Response(
+            response="request body must be a JSON object",
+            status=400,
+            mimetype="text/plain")
     if "title" not in request_json:
         return Response(
             response="title is required",
             status=400,
-            mimetype="application/json")
+            mimetype="text/plain")
     if "expansions" not in request_json:
         return Response(
             response="expansions is required",
             status=400,
-            mimetype="application/json")
+            mimetype="text/plain")
     title = request_json["title"]
     expansions = request_json["expansions"]
+    # bool is a subclass of int, so rule it out explicitly
+    if not isinstance(expansions, list) or \
+            not all(isinstance(id, int) and not isinstance(id, bool) for id in expansions):
+        return Response(
+            response="expansions must be an array of expansion ids",
+            status=400,
+            mimetype="text/plain")
+    duplicate_ids = sorted({id for id in expansions if expansions.count(id) > 1})
+    if duplicate_ids:
+        return Response(
+            response=f"duplicate expansion ids: {', '.join(str(id) for id in duplicate_ids)}",
+            status=400,
+            mimetype="text/plain")
 
     conn = get_db_connection()
+    valid_ids = {row["_id"] for row in conn.execute("SELECT _id FROM expansion").fetchall()}
+    invalid_ids = sorted(set(expansions) - valid_ids)
+    if invalid_ids:
+        conn.close()
+        return Response(
+            response=f"invalid expansion ids: {', '.join(str(id) for id in invalid_ids)}",
+            status=400,
+            mimetype="text/plain")
+
     cursor = conn.cursor()
     cursor.execute(
         "INSERT INTO session(sessionid, sourceip, title, created) VALUES(?, ?, ?, ?)",

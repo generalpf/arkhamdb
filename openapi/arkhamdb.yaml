@@ -3,39 +3,77 @@ info:
   title: ArkhamDB
   description: |
     This API contains information for cards from Arkham Horror, 2nd Edition.
+
+    Drawing cards requires a session, created with `POST /session/create`.
+    The session tracks which expansions are in play and which cards have been
+    discarded from each deck. Pass the session id in the `sessionid` header.
+    When a deck runs out, its discard pile is shuffled back in automatically.
   version: 1.0.0
 servers:
 - url: https://arkhamdb.walberg.ca
+tags:
+- name: session
+- name: expansion
+- name: board
+- name: location
+- name: otherworld
+- name: encounter
 paths:
   /session/create:
     post:
+      tags: [session]
       operationId: session.create
       summary: Create a session
       description: Creates a session so the server can preserve the deck states.
       requestBody:
-        required: true
-        content:
-          application/x-www-form-urlencoded:
-            schema:
-              $ref: './components.yaml#/components/requestBodies/sessionCreateRequest'
+        $ref: './components.yaml#/components/requestBodies/sessionCreateRequest'
       responses:
-        201:
+        '201':
           description: A session was created.
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  sessionid:
-                    type: string
-                    description: A UUID representing the new session id.
+                $ref: './components.yaml#/components/schemas/sessionCreateResponse'
+        '400':
+          $ref: './components.yaml#/components/responses/badRequest'
+  /expansion:
+    get:
+      tags: [expansion]
+      operationId: expansion.list
+      summary: Get a list of expansions
+      responses:
+        '200':
+          description: All good.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: './components.yaml#/components/schemas/expansion'
+  /expansion/{id}:
+    get:
+      tags: [expansion]
+      operationId: expansion.get
+      summary: Get an individual expansion
+      parameters:
+      - $ref: './components.yaml#/components/parameters/id'
+      responses:
+        '200':
+          description: All good.
+          content:
+            application/json:
+              schema:
+                $ref: './components.yaml#/components/schemas/expansion'
+        '404':
+          $ref: './components.yaml#/components/responses/notFound'
   /board:
     get:
+      tags: [board]
       operationId: board.list
       summary: Get a list of boards
       description: Gets a list of all boards from all expansions.
       responses:
-        200:
+        '200':
           description: All good.
           content:
             application/json:
@@ -45,21 +83,207 @@ paths:
                   $ref: './components.yaml#/components/schemas/board'
   /board/{id}:
     get:
+      tags: [board]
       operationId: board.get
       summary: Get an individual board
       parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: integer
-          minimum: 1
+      - $ref: './components.yaml#/components/parameters/id'
       responses:
-        200:
+        '200':
           description: All good.
           content:
             application/json:
               schema:
                 $ref: './components.yaml#/components/schemas/board'
-        404:
-          description: The board identified by the id does not exist.
+        '404':
+          $ref: './components.yaml#/components/responses/notFound'
+  /location:
+    get:
+      tags: [location]
+      operationId: location.list
+      summary: Get a list of locations
+      description: Gets a list of all locations from all expansions.
+      responses:
+        '200':
+          description: All good.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: './components.yaml#/components/schemas/location'
+  /location/{id}:
+    get:
+      tags: [location]
+      operationId: location.get
+      summary: Get an individual location
+      parameters:
+      - $ref: './components.yaml#/components/parameters/id'
+      responses:
+        '200':
+          description: All good.
+          content:
+            application/json:
+              schema:
+                $ref: './components.yaml#/components/schemas/location'
+        '404':
+          $ref: './components.yaml#/components/responses/notFound'
+  /location/{id}/draw:
+    post:
+      tags: [location]
+      operationId: location.draw
+      summary: Draw a location encounter
+      description: |
+        Draws a random card from the location's neighbourhood deck, limited to
+        the session's expansions, and discards it. If every card has been
+        discarded, the neighbourhood's discard pile is shuffled back in first.
+      security:
+      - sessionId: []
+      parameters:
+      - $ref: './components.yaml#/components/parameters/id'
+      responses:
+        '200':
+          description: The encounter for this location on the drawn card.
+          content:
+            application/json:
+              schema:
+                $ref: './components.yaml#/components/schemas/locationEncounter'
+        '400':
+          $ref: './components.yaml#/components/responses/sessionMissing'
+        '401':
+          $ref: './components.yaml#/components/responses/sessionInvalid'
+        '404':
+          $ref: './components.yaml#/components/responses/deckEmpty'
+  /otherworld:
+    get:
+      tags: [otherworld]
+      operationId: otherworld.list
+      summary: Get a list of other worlds
+      description: Gets a list of all other worlds from all expansions.
+      responses:
+        '200':
+          description: All good.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: './components.yaml#/components/schemas/otherworld'
+  /otherworld/{id}:
+    get:
+      tags: [otherworld]
+      operationId: otherworld.get
+      summary: Get an individual other world
+      parameters:
+      - $ref: './components.yaml#/components/parameters/id'
+      responses:
+        '200':
+          description: All good.
+          content:
+            application/json:
+              schema:
+                $ref: './components.yaml#/components/schemas/otherworld'
+        '404':
+          $ref: './components.yaml#/components/responses/notFound'
+  /otherworld/{id}/draw:
+    post:
+      tags: [otherworld]
+      operationId: otherworld.draw
+      summary: Draw an other world encounter
+      description: |
+        Draws cards from the gate deck, limited to the session's expansions,
+        until one shares a colour with the other world. Every drawn card is
+        discarded. If the deck runs out, the discard pile is shuffled back in.
+      security:
+      - sessionId: []
+      parameters:
+      - $ref: './components.yaml#/components/parameters/id'
+      responses:
+        '200':
+          description: The encounter for this other world on the drawn card, or the card's `Other` encounter if it has none for this other world.
+          content:
+            application/json:
+              schema:
+                $ref: './components.yaml#/components/schemas/otherworldEncounter'
+        '400':
+          description: |
+            The `sessionid` header was not supplied, or the other world has no
+            colours (such as `Other`), so no encounter can be drawn for it.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '401':
+          $ref: './components.yaml#/components/responses/sessionInvalid'
+        '404':
+          description: |
+            The other world does not exist, or no gate cards in the session's
+            expansions share a colour with it.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /reckoning/draw:
+    post:
+      tags: [encounter]
+      operationId: reckoning.draw
+      summary: Draw a reckoning card
+      security:
+      - sessionId: []
+      responses:
+        '200':
+          description: The drawn card.
+          content:
+            application/json:
+              schema:
+                $ref: './components.yaml#/components/schemas/reckoningCard'
+        '400':
+          $ref: './components.yaml#/components/responses/sessionMissing'
+        '401':
+          $ref: './components.yaml#/components/responses/sessionInvalid'
+        '404':
+          $ref: './components.yaml#/components/responses/deckEmpty'
+  /exhibitencounter/draw:
+    post:
+      tags: [encounter]
+      operationId: exhibitencounter.draw
+      summary: Draw an exhibit encounter card
+      security:
+      - sessionId: []
+      responses:
+        '200':
+          description: The drawn card.
+          content:
+            application/json:
+              schema:
+                $ref: './components.yaml#/components/schemas/exhibitEncounterCard'
+        '400':
+          $ref: './components.yaml#/components/responses/sessionMissing'
+        '401':
+          $ref: './components.yaml#/components/responses/sessionInvalid'
+        '404':
+          $ref: './components.yaml#/components/responses/deckEmpty'
+  /cultencounter/draw:
+    post:
+      tags: [encounter]
+      operationId: cultencounter.draw
+      summary: Draw a cult encounter card
+      security:
+      - sessionId: []
+      responses:
+        '200':
+          description: The drawn card.
+          content:
+            application/json:
+              schema:
+                $ref: './components.yaml#/components/schemas/cultEncounterCard'
+        '400':
+          $ref: './components.yaml#/components/responses/sessionMissing'
+        '401':
+          $ref: './components.yaml#/components/responses/sessionInvalid'
+        '404':
+          $ref: './components.yaml#/components/responses/deckEmpty'
+components:
+  securitySchemes:
+    sessionId:
+      $ref: './components.yaml#/components/securitySchemes/sessionId'
